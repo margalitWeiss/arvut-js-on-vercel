@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { fullName, email, amount, address, phone, returnUrl, cancelUrl } = req.body;
+    const { fullName, email, amount, address, phone, returnUrl, cancelUrl, identityId } = req.body;
 
     // בדיקות תקינות
     if (!fullName || !email || !amount) {
@@ -52,48 +52,133 @@ export default async function handler(req, res) {
 
     // קריאה ל-API של סאמיט - beginredirect
     const SUMIT_URL = 'https://api.sumit.co.il/billing';
+    
+    // בדיקה שה-Environment Variables קיימים
+    if (!process.env.SUMIT_COMPANY_ID || !process.env.SUMIT_API_KEY) {
+      console.error('Missing environment variables:', {
+        hasCompanyID: !!process.env.SUMIT_COMPANY_ID,
+        hasAPIKey: !!process.env.SUMIT_API_KEY
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'שגיאת תצורה: חסרים פרטי API'
+      });
+    }
+    
     const credentials = {
-      CompanyID: parseInt(process.env.SUMIT_COMPANY_ID),
+      CompanyID: parseInt(process.env.SUMIT_COMPANY_ID, 10),
       APIKey: process.env.SUMIT_API_KEY
     };
+    
+    // בדיקה שה-CompanyID הוא מספר תקין
+    if (isNaN(credentials.CompanyID)) {
+      console.error('Invalid CompanyID:', process.env.SUMIT_COMPANY_ID);
+      return res.status(500).json({
+        success: false,
+        error: 'שגיאת תצורה: CompanyID לא תקין'
+      });
+    }
 
-    const response = await fetch(`${SUMIT_URL}/payments/beginredirect/`, {
+    // בניית הבקשה לפי הפורמט המדויק של סאמיט (לפי התיעוד)
+    // חשוב: בדיוק כמו הדוגמה - כל השדות באותו סדר, null במקומות המתאימים
+    const requestBody = {
+      Customer: {
+        ExternalIdentifier: null,
+        NoVAT: null,
+        SearchMode: 0,
+        Name: fullName,
+        Phone: phone || null,
+        EmailAddress: email || null,
+        City: null,
+        Address: address || null,
+        ZipCode: null,
+        CompanyNumber: null,
+        ID: null,
+        Folder: null,
+        Properties: null
+      },
+      Items: [{
+        Item: {
+          ID: null,
+          Name: 'תרומה עבור עמותת משפחה מאוחדת',
+          Description: null,
+          Price: null,
+          Currency: null,
+          Cost: null,
+          ExternalIdentifier: null,
+          SKU: null,
+          SearchMode: null,
+          Properties: null
+        },
+        Quantity: 1,
+        UnitPrice: parseFloat(amount),
+        Total: null,
+        Currency: null,
+        Description: null
+      }],
+      VATIncluded: true,
+      VATRate: null,
+      DocumentType: null,
+      RedirectURL: redirectUrl,
+      CancelRedirectURL: cancelRedirectUrl,
+      // מזהה חיצוני – מאפשר לזהות את המשלם ב-Webhook ללא חשיפת ת"ז ב-URL
+      ExternalIdentifier: identityId ? `${identityId}:${parseFloat(amount)}` : null,
+      MaximumPayments: null,
+      MinimumPaymentsCredit: null,
+      SendUpdateByEmailAddress: email || null,
+      ExpirationHours: null,
+      Theme: null,
+      Language: null,
+      Header: null,
+      UpdateOrganizationOnSuccess: null,
+      UpdateOrganizationOnFailure: null,
+      UpdateCustomerOnSuccess: null,
+      DocumentDescription: null,
+      DraftDocument: null,
+      AutomaticallyRedirectToProviderPaymentPage: null,
+      // Webhook – סאמיט יקרא לכאן לאחר תשלום מוצלח ויעדכן את ה-DB אוטומטית
+      IPNURL: identityId ? 'https://arvut.org.il/new/backend/public/payment-webhook.php' : null,
+      PreventSavingPaymentMethod: null,
+      MerchantNumber: null,
+      ResponseLanguage: null,
+      Credentials: credentials
+    };
+
+    // URL עם סלאש בסוף (כמו בתיעוד)
+    const sumitApiUrl = `${SUMIT_URL}/payments/beginredirect/`;
+
+    // לוגים לבדיקה
+    console.log('=== SUMIT API Request ===');
+    console.log('URL:', sumitApiUrl);
+    console.log('Request Body:', JSON.stringify(requestBody, null, 2));
+    console.log('Request Body (compact):', JSON.stringify(requestBody));
+    console.log('CompanyID:', credentials.CompanyID, '(type:', typeof credentials.CompanyID, ')');
+    console.log('APIKey exists:', !!credentials.APIKey, '(length:', credentials.APIKey?.length, ')');
+    
+    const response = await fetch(sumitApiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        Credentials: credentials,
-        Customer: {
-          Name: fullName,
-          EmailAddress: email,
-          Phone: phone || null,
-          Address: address || null
-        },
-        Items: [{
-          Item: {
-            Name: 'תרומה עבור עמותת חסדי המצילים'
-          },
-          Quantity: 1,
-          UnitPrice: parseFloat(amount)
-        }],
-        VATIncluded: true,
-        RedirectURL: redirectUrl,
-        CancelRedirectURL: cancelRedirectUrl,
-        DocumentType: 400, // קבלה על תרומה
-        SendUpdateByEmailAddress: email,
-        Language: 'he' // עברית
-      })
+      body: JSON.stringify(requestBody)
     });
+
+    console.log('=== SUMIT API Response ===');
+    console.log('Status:', response.status);
+    console.log('Status Text:', response.statusText);
 
     // בדיקה אם ה-response הצליח
     if (!response.ok) {
       const errorText = await response.text();
+      console.log('Error Response:', errorText);
+      
       let errorMessage = 'שגיאה בעיבוד התשלום';
       try {
         const errorData = JSON.parse(errorText);
-        errorMessage = errorData.Message || errorData.UserErrorMessage || errorMessage;
-      } catch {
+        console.log('Parsed Error Data:', errorData);
+        errorMessage = errorData.Message || errorData.UserErrorMessage || errorData.error || errorMessage;
+      } catch (e) {
+        console.log('Failed to parse error response:', e);
         errorMessage = `שגיאת API סאמיט (${response.status}): ${errorText || 'לא ניתן להתחבר לסאמיט'}`;
       }
       return res.status(500).json({
@@ -102,7 +187,20 @@ export default async function handler(req, res) {
       });
     }
 
-    const data = await response.json();
+    const responseText = await response.text();
+    console.log('Response Text:', responseText);
+    
+    let data;
+    try {
+      data = JSON.parse(responseText);
+      console.log('Parsed Response Data:', JSON.stringify(data, null, 2));
+    } catch (e) {
+      console.error('Failed to parse response:', e);
+      return res.status(500).json({
+        success: false,
+        error: `שגיאה בפענוח תגובת סאמיט: ${responseText}`
+      });
+    }
 
     // בדיקה אם ה-API הצליח
     if (data.Status === 'Success (0)' || data.Status === 0) {
