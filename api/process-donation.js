@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { fullName, email, amount, address, phone, returnUrl, cancelUrl, identityId } = req.body;
+    const { fullName, email, amount, address, phone, returnUrl, cancelUrl, identityID } = req.body;
 
     // בדיקות תקינות
     if (!fullName || !email || !amount) {
@@ -85,7 +85,7 @@ export default async function handler(req, res) {
       Customer: {
         ExternalIdentifier: null,
         NoVAT: null,
-        SearchMode: 0,
+        SearchMode: identityID ? 1 : 0,
         Name: fullName,
         Phone: phone || null,
         EmailAddress: email || null,
@@ -93,7 +93,7 @@ export default async function handler(req, res) {
         Address: address || null,
         ZipCode: null,
         CompanyNumber: null,
-        ID: null,
+        ID: identityID || null,
         Folder: null,
         Properties: null
       },
@@ -121,8 +121,7 @@ export default async function handler(req, res) {
       DocumentType: null,
       RedirectURL: redirectUrl,
       CancelRedirectURL: cancelRedirectUrl,
-      // מזהה חיצוני – מאפשר לזהות את המשלם ב-Webhook ללא חשיפת ת"ז ב-URL
-      ExternalIdentifier: identityId ? `${identityId}:${parseFloat(amount)}` : null,
+      ExternalIdentifier: null,
       MaximumPayments: null,
       MinimumPaymentsCredit: null,
       SendUpdateByEmailAddress: email || null,
@@ -136,8 +135,7 @@ export default async function handler(req, res) {
       DocumentDescription: null,
       DraftDocument: null,
       AutomaticallyRedirectToProviderPaymentPage: null,
-      // Webhook – סאמיט יקרא לכאן לאחר תשלום מוצלח ויעדכן את ה-DB אוטומטית
-      IPNURL: identityId ? 'https://arvut.org.il/new/backend/public/payment-webhook.php' : null,
+      IPNURL: null,
       PreventSavingPaymentMethod: null,
       MerchantNumber: null,
       ResponseLanguage: null,
