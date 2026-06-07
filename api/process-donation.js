@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     // חשוב: בדיוק כמו הדוגמה - כל השדות באותו סדר, null במקומות המתאימים
     const requestBody = {
       Customer: {
-        ExternalIdentifier: null,
+        ExternalIdentifier: identityID || null,
         NoVAT: null,
         SearchMode: identityID ? 1 : 0,
         Name: fullName,
