@@ -104,9 +104,10 @@ export default async function handler(req, res) {
         City: null,
         Address: address || null,
         ZipCode: null,
-        CompanyNumber: null,
-        // ID נשלח כמספר שלם (לא string) כדי שסאמיט ישמור אותו כת.ז ויוסיף אפס מוביל בצדם
-        ID: isIsraeliID ? parseInt(cleanIdentityID, 10) : null,
+        // CompanyNumber = שדה ת.ז / ח.פ. בסאמיט — כאן שומרים את הת.ז של המשלם
+        CompanyNumber: cleanIdentityID || null,
+        // ID = מזהה פנימי של סאמיט — null תמיד (הם מקציים)
+        ID: null,
         Folder: null,
         Properties: null
       },
