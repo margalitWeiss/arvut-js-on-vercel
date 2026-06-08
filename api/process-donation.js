@@ -79,13 +79,23 @@ export default async function handler(req, res) {
       });
     }
 
+    // נרמול מספר זהות לפני שליחה לסאמיט:
+    // ת.ז ישראלית = 9 ספרות בלבד → מנקים מקפים/רווחים ושולחים 9 ספרות
+    // דרכון / מספר זר = עלול להכיל אותיות → שולחים כמות שהוא (trim + uppercase)
+    const rawID = identityID ? String(identityID).trim() : null;
+    const digitsOnly = rawID ? rawID.replace(/\D/g, '') : '';
+    const isIsraeliID = digitsOnly.length === 9;  // ת.ז = בדיוק 9 ספרות
+    const cleanIdentityID = rawID
+      ? (isIsraeliID ? digitsOnly : rawID.toUpperCase())
+      : null;
+
     // בניית הבקשה לפי הפורמט המדויק של סאמיט (לפי התיעוד)
     // חשוב: בדיוק כמו הדוגמה - כל השדות באותו סדר, null במקומות המתאימים
     const requestBody = {
       Customer: {
-        ExternalIdentifier: identityID || null,
+        ExternalIdentifier: cleanIdentityID || null,
         NoVAT: null,
-        SearchMode: identityID ? 1 : 0,
+        SearchMode: cleanIdentityID ? 1 : 0,
         Name: fullName,
         Phone: phone || null,
         EmailAddress: email || null,
@@ -93,7 +103,7 @@ export default async function handler(req, res) {
         Address: address || null,
         ZipCode: null,
         CompanyNumber: null,
-        ID: identityID || null,
+        ID: isIsraeliID ? cleanIdentityID : null,
         Folder: null,
         Properties: null
       },
