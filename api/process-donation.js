@@ -105,8 +105,8 @@ export default async function handler(req, res) {
         Address: address || null,
         ZipCode: null,
         CompanyNumber: null,
-        // ID=null: סאמיט ממיר ID למספר ומוחק אפס מוביל → משתמשים ב-ExternalIdentifier בלבד
-        ID: null,
+        // ID נשלח כמספר שלם (לא string) כדי שסאמיט ישמור אותו כת.ז ויוסיף אפס מוביל בצדם
+        ID: isIsraeliID ? parseInt(cleanIdentityID, 10) : null,
         Folder: null,
         Properties: null
       },
