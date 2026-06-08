@@ -85,14 +85,16 @@ export default async function handler(req, res) {
     const rawID = identityID ? String(identityID).trim() : null;
     const digitsOnly = rawID ? rawID.replace(/\D/g, '') : '';
     const isIsraeliID = digitsOnly.length === 9;  // ת.ז = בדיוק 9 ספרות
+    // padStart: מבטיח שאפס מוביל יישמר (036304327 ולא 36304327)
     const cleanIdentityID = rawID
-      ? (isIsraeliID ? digitsOnly : rawID.toUpperCase())
+      ? (isIsraeliID ? digitsOnly.padStart(9, '0') : rawID.toUpperCase())
       : null;
 
     // בניית הבקשה לפי הפורמט המדויק של סאמיט (לפי התיעוד)
     // חשוב: בדיוק כמו הדוגמה - כל השדות באותו סדר, null במקומות המתאימים
     const requestBody = {
       Customer: {
+        // ExternalIdentifier נשמר כ-string ושומר אפס מוביל ("036304327")
         ExternalIdentifier: cleanIdentityID || null,
         NoVAT: null,
         SearchMode: cleanIdentityID ? 1 : 0,
@@ -103,7 +105,8 @@ export default async function handler(req, res) {
         Address: address || null,
         ZipCode: null,
         CompanyNumber: null,
-        ID: isIsraeliID ? cleanIdentityID : null,
+        // ID=null: סאמיט ממיר ID למספר ומוחק אפס מוביל → משתמשים ב-ExternalIdentifier בלבד
+        ID: null,
         Folder: null,
         Properties: null
       },
