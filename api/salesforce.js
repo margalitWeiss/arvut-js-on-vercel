@@ -2,7 +2,7 @@
 // This keeps the TOKEN secure on the server side
 
 export default async function handler(req, res) {
-  // Enable CORS
+  // Enable CORS.
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -84,6 +84,40 @@ export default async function handler(req, res) {
           body: JSON.stringify(data)
         });
         break;
+
+      case 'updateSumitCustomer': {
+        // עדכון פרטי לקוח בסאמיט ללא תרומה
+        const SUMIT_CUSTOMERS_URL = 'https://api.sumit.co.il/customers/update/';
+        const sumitCompanyId = parseInt(process.env.SUMIT_COMPANY_ID, 10);
+        const sumitApiKey = process.env.SUMIT_API_KEY;
+
+        if (!sumitCompanyId || !sumitApiKey) {
+          return res.status(500).json({ success: false, error: 'חסרים פרטי SUMIT API' });
+        }
+
+        const rawID = data.identityID ? String(data.identityID).trim() : null;
+        const digitsOnly = rawID ? rawID.replace(/\D/g, '') : '';
+        const cleanID = digitsOnly.length === 9
+          ? digitsOnly.padStart(9, '0')
+          : (rawID ? rawID.toUpperCase() : null);
+
+        response = await fetch(SUMIT_CUSTOMERS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            Customer: {
+              ExternalIdentifier: cleanID || null,
+              SearchMode: cleanID ? 1 : 0,
+              Name: data.fullName || null,
+              Phone: data.phone || null,
+              EmailAddress: data.email || null,
+              Address: data.address || null,
+            },
+            Credentials: { CompanyID: sumitCompanyId, APIKey: sumitApiKey }
+          })
+        });
+        break;
+      }
 
       default:
         return res.status(400).json({ error: 'Invalid action' });
