@@ -87,7 +87,7 @@ export default async function handler(req, res) {
 
       case 'updateSumitCustomer': {
         // עדכון פרטי לקוח בסאמיט ללא תרומה
-        const SUMIT_CUSTOMERS_URL = 'https://api.sumit.co.il/customers/update/';
+        const SUMIT_CUSTOMERS_URL = 'https://api.sumit.co.il/billing/customers/update/';
         const sumitCompanyId = parseInt(process.env.SUMIT_COMPANY_ID, 10);
         const sumitApiKey = process.env.SUMIT_API_KEY;
 
