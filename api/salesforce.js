@@ -107,7 +107,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             Details: {
               ExternalIdentifier: cleanID || null,
-              SearchMode: cleanID ? 1 : 0,
+              SearchMode: null,
               Name: data.fullName || null,
               Phone: data.phone || null,
               EmailAddress: data.email || null,
