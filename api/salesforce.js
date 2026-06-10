@@ -106,16 +106,16 @@ export default async function handler(req, res) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             Details: {
-              ExternalIdentifier: cleanID || null,
+              ExternalIdentifier: null,
               NoVAT: null,
-              SearchMode: 1,         // 1 = חיפוש לפי ExternalIdentifier
+              SearchMode: null,
               Name: data.fullName || null,
               Phone: data.phone || null,
               EmailAddress: data.email || null,
               City: null,
               Address: data.address || null,
               ZipCode: null,
-              CompanyNumber: null,   // null כדי לא לגרום לקונפליקט עם ExternalIdentifier
+              CompanyNumber: cleanID || null,  // ת.ז — כך סאמיט מוצא את הלקוח
               ID: null,
               Folder: null,
               Properties: null,
