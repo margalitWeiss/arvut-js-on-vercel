@@ -104,20 +104,21 @@ export default async function handler(req, res) {
         response = await fetch(SUMIT_CUSTOMERS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-  // Customer = זיהוי הלקוח הקיים לפי ExternalIdentifier (ת.ז)
+         body: JSON.stringify({
   Customer: {
     ExternalIdentifier: cleanID || null,
-    SearchMode: cleanID ? 1 : 0,
   },
-  // Details = הנתונים החדשים לעדכון
   Details: {
+    SearchMode: cleanID ? 1 : 0,
     Name: data.fullName || null,
     Phone: data.phone || null,
     EmailAddress: data.email || null,
     Address: data.address || null,
   },
-  Credentials: { CompanyID: sumitCompanyId, APIKey: sumitApiKey }
+  Credentials: {
+    CompanyID: sumitCompanyId,
+    APIKey: sumitApiKey
+  }
 })
         });
         break;
