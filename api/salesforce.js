@@ -104,22 +104,25 @@ export default async function handler(req, res) {
         response = await fetch(SUMIT_CUSTOMERS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
-  Customer: {
-    ExternalIdentifier: cleanID || null,
-  },
-  Details: {
-    SearchMode: cleanID ? 1 : 0,
-    Name: data.fullName || null,
-    Phone: data.phone || null,
-    EmailAddress: data.email || null,
-    Address: data.address || null,
-  },
-  Credentials: {
-    CompanyID: sumitCompanyId,
-    APIKey: sumitApiKey
-  }
-})
+          body: JSON.stringify({
+            Details: {
+              ExternalIdentifier: cleanID || null,
+              SearchMode: cleanID ? 1 : 0,
+              Name: data.fullName || null,
+              Phone: data.phone || null,
+              EmailAddress: data.email || null,
+              Address: data.address || null,
+              CompanyNumber: cleanID || null,
+              NoVAT: null,
+              City: null,
+              ZipCode: null,
+              ID: null,
+              Folder: null,
+              Properties: null,
+            },
+            Credentials: { CompanyID: sumitCompanyId, APIKey: sumitApiKey },
+            ResponseLanguage: null,
+          })
         });
         break;
       }
