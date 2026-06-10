@@ -107,15 +107,15 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             Details: {
               ExternalIdentifier: cleanID || null,
-              SearchMode: null,
+              NoVAT: null,
+              SearchMode: 1,         // 1 = חיפוש לפי ExternalIdentifier
               Name: data.fullName || null,
               Phone: data.phone || null,
               EmailAddress: data.email || null,
-              Address: data.address || null,
-              CompanyNumber: cleanID || null,
-              NoVAT: null,
               City: null,
+              Address: data.address || null,
               ZipCode: null,
+              CompanyNumber: null,   // null כדי לא לגרום לקונפליקט עם ExternalIdentifier
               ID: null,
               Folder: null,
               Properties: null,
