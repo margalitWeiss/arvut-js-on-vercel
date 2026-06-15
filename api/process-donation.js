@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { fullName, email, amount, address, phone, returnUrl, cancelUrl, identityID } = req.body;
+    const { fullName, email, amount, address, phone, returnUrl, cancelUrl, identityID, onSpouse } = req.body;
 
     // בדיקות תקינות
     if (!fullName || !email || !amount) {
@@ -114,7 +114,9 @@ export default async function handler(req, res) {
       Items: [{
         Item: {
           ID: null,
-          Name: 'תרומה עבור עמותת משפחה מאוחדת',
+          Name: onSpouse
+            ? 'תרומה לקרן משפחה מאוחדת - הוספת בן/בת זוג'
+            : 'תרומה לקרן משפחה מאוחדת',
           Description: null,
           Price: null,
           Currency: null,
