@@ -49,7 +49,36 @@ export default async function handler(req, res) {
         });
         break;
 
-      case 'addPayment':
+      case 'addPayment': {
+        // הגנת כפילות: מנסים לתפוס מנעול אטומי (UNIQUE KEY ב-DB) לפני שליחה
+        // בפועל ל-Salesforce. מונע מצב שבו גם ה-IPN webhook וגם הדפדפן שולחים
+        // את אותו תשלום כמעט בו-זמנית ויוצרים שתי רשומות תשלום כפולות.
+        // Fail-open: אם בדיקת המנעול נכשלת (רשת/DB), ממשיכים כרגיל ולא חוסמים
+        // תשלום אמיתי בגלל תקלה במנגנון ההגנה עצמו.
+        try {
+          const DB_API_BASE = process.env.DB_API_BASE || 'https://arvut.org.il/backend/public';
+          const DB_API_SECRET = process.env.DB_API_SECRET || 'arvut-api-secret-2024';
+          const digitsOnly = String(data?.identityID || '').replace(/\D/g, '');
+          const lockKey = `${digitsOnly || data?.identityID}_${data?.PaymentDate}_${data?.Amount}_${data?.OnSpouse ? 'spouse' : 'member'}`;
+
+          const lockRes = await fetch(`${DB_API_BASE}/index.php?route=payment-lock`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${DB_API_SECRET}`
+            },
+            body: JSON.stringify({ lockKey })
+          });
+          const lockData = await lockRes.json().catch(() => ({}));
+
+          if (lockData.acquired === false) {
+            console.log('addPayment: duplicate payment detected (lock already held), skipping:', lockKey);
+            return res.status(200).json({ success: true, skipped: true, reason: 'duplicate' });
+          }
+        } catch (lockErr) {
+          console.warn('addPayment: lock check failed, proceeding anyway (fail-open):', lockErr.message);
+        }
+
         endpoint = `${API_BASE_URL}/addPayment`;
         response = await fetch(endpoint, {
           method: 'POST',
@@ -60,6 +89,7 @@ export default async function handler(req, res) {
           body: JSON.stringify(data)
         });
         break;
+      }
 
       case 'getMember':
         endpoint = `${API_BASE_URL}/getMember`;

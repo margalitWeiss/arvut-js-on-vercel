@@ -151,7 +151,10 @@ export default async function handler(req, res) {
       DocumentDescription: null,
       DraftDocument: null,
       AutomaticallyRedirectToProviderPaymentPage: null,
-      IPNURL: null,
+      // IPN: סאמיט קורא ל-webhook הזה ישירות מהשרת (server-to-server) מיד לאחר
+      // תשלום מוצלח - ללא תלות בדפדפן של המשתמש. הפרטים החסרים (זהות/סכום/סוג)
+      // מוטמעים כ-query params כי ExternalIdentifier למעלה כבר תפוס לזיהוי הלקוח.
+      IPNURL: `https://arvut-js-on-vercel-one.vercel.app/api/payment-webhook?id=${encodeURIComponent(cleanIdentityID || '')}&amt=${encodeURIComponent(amount)}&sp=${onSpouse ? 1 : 0}`,
       PreventSavingPaymentMethod: null,
       MerchantNumber: null,
       ResponseLanguage: null,
