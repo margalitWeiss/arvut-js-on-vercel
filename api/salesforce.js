@@ -53,13 +53,17 @@ export default async function handler(req, res) {
         // הגנת כפילות: מנסים לתפוס מנעול אטומי (UNIQUE KEY ב-DB) לפני שליחה
         // בפועל ל-Salesforce. מונע מצב שבו גם ה-IPN webhook וגם הדפדפן שולחים
         // את אותו תשלום כמעט בו-זמנית ויוצרים שתי רשומות תשלום כפולות.
-        // Fail-open: אם בדיקת המנעול נכשלת (רשת/DB), ממשיכים כרגיל ולא חוסמים
-        // תשלום אמיתי בגלל תקלה במנגנון ההגנה עצמו.
+        // Fail-open: אם בדיקת המנעול נכשלת/עמומה (רשת/DB/auth), ממשיכים כרגיל
+        // ולא חוסמים תשלום אמיתי בגלל תקלה במנגנון ההגנה עצמו - אבל כל מקרה
+        // עמום נרשם בלוג בבירור (console.error) כדי לאפשר איתור תקלות.
+        // paymentAttemptId (pid) לא נשלח ל-Salesforce עצמו - משמש רק למנעול.
+        const { paymentAttemptId, ...sfPaymentData } = data || {};
         try {
           const DB_API_BASE = process.env.DB_API_BASE || 'https://arvut.org.il/backend/public';
           const DB_API_SECRET = process.env.DB_API_SECRET || 'arvut-api-secret-2024';
           const digitsOnly = String(data?.identityID || '').replace(/\D/g, '');
-          const lockKey = `${digitsOnly || data?.identityID}_${data?.PaymentDate}_${data?.Amount}_${data?.OnSpouse ? 'spouse' : 'member'}`;
+          const rawPid = paymentAttemptId ? String(paymentAttemptId).trim() : '';
+          const lockKey = rawPid || `${digitsOnly || data?.identityID}_${data?.PaymentDate}_${data?.Amount}_${data?.OnSpouse ? 'spouse' : 'member'}`;
 
           const lockRes = await fetch(`${DB_API_BASE}/index.php?route=payment-lock`, {
             method: 'POST',
@@ -67,16 +71,21 @@ export default async function handler(req, res) {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${DB_API_SECRET}`
             },
-            body: JSON.stringify({ lockKey })
+            body: JSON.stringify({ lockKey, apiSecret: DB_API_SECRET })
           });
           const lockData = await lockRes.json().catch(() => ({}));
+          console.log('addPayment: lock-check response:', lockRes.status, JSON.stringify(lockData));
 
-          if (lockData.acquired === false) {
+          if (lockRes.ok && lockData.success === true && lockData.acquired === false) {
             console.log('addPayment: duplicate payment detected (lock already held), skipping:', lockKey);
             return res.status(200).json({ success: true, skipped: true, reason: 'duplicate' });
           }
+          if (!(lockRes.ok && lockData.success === true && lockData.acquired === true)) {
+            // תגובה עמומה (401/404/500/JSON לא צפוי) - fail-open, אבל בלוג ברור
+            console.error('addPayment: lock-check AMBIGUOUS response, proceeding anyway (fail-open):', lockRes.status, JSON.stringify(lockData));
+          }
         } catch (lockErr) {
-          console.warn('addPayment: lock check failed, proceeding anyway (fail-open):', lockErr.message);
+          console.error('addPayment: lock-check NETWORK error, proceeding anyway (fail-open):', lockErr.message);
         }
 
         endpoint = `${API_BASE_URL}/addPayment`;
@@ -86,7 +95,7 @@ export default async function handler(req, res) {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${TOKEN}`
           },
-          body: JSON.stringify(data)
+          body: JSON.stringify(sfPaymentData)
         });
         break;
       }

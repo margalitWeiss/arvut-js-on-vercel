@@ -11,6 +11,8 @@
  * API זה משתמש ב-beginredirect של סאמיט - יוצר URL לעמוד תשלום חיצוני
  */
 
+import { randomUUID } from 'crypto';
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,7 +30,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { fullName, email, amount, address, phone, returnUrl, cancelUrl, identityID, onSpouse } = req.body;
+    const { fullName, email, amount, address, phone, returnUrl, cancelUrl, identityID, onSpouse, paymentAttemptId } = req.body;
+
+    // מזהה ייחודי לניסיון תשלום ספציפי הזה - משמש כמפתח מנעול (lockKey) אצל
+    // ה-IPN webhook וקריאת addPayment מהדפדפן, כדי להבטיח שגם תשלומים
+    // לגיטימיים וזהים (אותה זהות/סכום/יום) לא ייחסמו זה את זה בטעות, ושרק
+    // תשלום אחד בפועל בסאמיט ייצור רשומה אחת בלבד בסיילספורס.
+    // מתקבל מהדפדפן אם קיים (תאימות עתידית); אחרת נוצר כאן כ-fallback.
+    const effectivePaymentAttemptId = paymentAttemptId ? String(paymentAttemptId).trim() : randomUUID();
 
     // בדיקות תקינות
     if (!fullName || !email || !amount) {
@@ -154,7 +163,7 @@ export default async function handler(req, res) {
       // IPN: סאמיט קורא ל-webhook הזה ישירות מהשרת (server-to-server) מיד לאחר
       // תשלום מוצלח - ללא תלות בדפדפן של המשתמש. הפרטים החסרים (זהות/סכום/סוג)
       // מוטמעים כ-query params כי ExternalIdentifier למעלה כבר תפוס לזיהוי הלקוח.
-      IPNURL: `https://arvut-js-on-vercel-one.vercel.app/api/payment-webhook?id=${encodeURIComponent(cleanIdentityID || '')}&amt=${encodeURIComponent(amount)}&sp=${onSpouse ? 1 : 0}`,
+      IPNURL: `https://arvut-js-on-vercel-one.vercel.app/api/payment-webhook?id=${encodeURIComponent(cleanIdentityID || '')}&amt=${encodeURIComponent(amount)}&sp=${onSpouse ? 1 : 0}&pid=${encodeURIComponent(effectivePaymentAttemptId)}`,
       PreventSavingPaymentMethod: null,
       MerchantNumber: null,
       ResponseLanguage: null,
@@ -234,7 +243,8 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         redirectUrl: redirectUrl,
-        transactionId: data.Data?.TransactionId || null
+        transactionId: data.Data?.TransactionId || null,
+        paymentAttemptId: effectivePaymentAttemptId
       });
     } else {
       return res.status(500).json({

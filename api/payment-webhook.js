@@ -16,18 +16,31 @@ const DB_API_SECRET = process.env.DB_API_SECRET || 'arvut-api-secret-2024';
 const SALESFORCE_API_BASE = 'https://uh-rescuers-ea539e69b913.herokuapp.com/extapi/website';
 const SALESFORCE_TOKEN = process.env.SALESFORCE_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbiI6IlUyRnNkR1ZrWDE5QkkwQVY0VmErS203UmExRGVrOHlzeFBRbFV2SmNjM2ZMU0U4amZGSEt2TmI1WDRmKzRwZklOK1BBTkJXcEJmTkNUKy8vUFVDRk55UVhrbHRWRmdOaGlLVHFyY2FoeXRrPSIsImlhdCI6MTc2ODM4MDQ0MCwiZXhwIjoxNzk5NDg0NDQwfQ.LVmuKHLx2Xp4b8OA4HYqYi01ydEsrd4jC6BW61hRi_U';
 
-/** ניסיון לתפוס מנעול אטומי ב-DB. true = תפסנו / אין מניעה להמשיך (fail-open). */
+/**
+ * ניסיון לתפוס מנעול אטומי ב-DB.
+ * true = תפסנו בבירור, או שהתגובה עמומה/שגויה (fail-open - לא לפספס תשלום אמיתי).
+ * false = מישהו אחר כבר תפס את המנעול בבירור (כפילות מאושרת).
+ * apiSecret נשלח גם בגוף הבקשה (לא רק ב-header) - עוקף בעיות של שרתים
+ * שלא מעבירים את כותרת ה-Authorization דרך mod_rewrite/PHP-FPM.
+ */
 async function tryAcquireLock(lockKey) {
   try {
     const r = await fetch(`${DB_API_BASE}/index.php?route=payment-lock`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${DB_API_SECRET}` },
-      body: JSON.stringify({ lockKey })
+      body: JSON.stringify({ lockKey, apiSecret: DB_API_SECRET })
     });
     const j = await r.json().catch(() => ({}));
-    return j.acquired !== false;
+    console.log('payment-webhook: lock-check response:', r.status, JSON.stringify(j));
+
+    if (r.ok && j.success === true && j.acquired === true) return true;
+    if (r.ok && j.success === true && j.acquired === false) return false;
+
+    // תגובה עמומה (401/404/500/JSON לא צפוי) - חשוב לראות את זה בבירור בלוגים
+    console.error('payment-webhook: lock-check AMBIGUOUS response, proceeding anyway (fail-open):', r.status, JSON.stringify(j));
+    return true;
   } catch (e) {
-    console.warn('payment-webhook: lock check failed, proceeding anyway (fail-open):', e.message);
+    console.error('payment-webhook: lock-check NETWORK error, proceeding anyway (fail-open):', e.message);
     return true;
   }
 }
@@ -71,8 +84,11 @@ export default async function handler(req, res) {
     const formattedIdNumber = formatIdNumber(rawId);
     const digitsOnly = String(rawId).replace(/\D/g, '');
 
-    // מנעול ייחודי לפי זהות+תאריך+סכום+סוג תשלום - זהה למפתח שנבדק גם ב-salesforce.js
-    const lockKey = `${digitsOnly || rawId}_${paymentDate}_${amount}_${onSpouse ? 'spouse' : 'member'}`;
+    // מנעול ייחודי - עדיפות ל-pid (מזהה ייחודי לניסיון תשלום ספציפי, מגיע
+    // מ-process-donation.js ומועבר גם בקריאת addPayment מהדפדפן). אם pid לא
+    // קיים (תאימות לאחור), נופלים חזרה למפתח המבוסס על זהות+תאריך+סכום+סוג.
+    const rawPid = params.pid ? String(params.pid).trim() : '';
+    const lockKey = rawPid || `${digitsOnly || rawId}_${paymentDate}_${amount}_${onSpouse ? 'spouse' : 'member'}`;
     const acquired = await tryAcquireLock(lockKey);
 
     if (!acquired) {
