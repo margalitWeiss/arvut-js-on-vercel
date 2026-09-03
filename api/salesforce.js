@@ -63,7 +63,7 @@ export default async function handler(req, res) {
           const DB_API_SECRET = process.env.DB_API_SECRET || 'arvut-api-secret-2024';
           const digitsOnly = String(data?.identityID || '').replace(/\D/g, '');
           const rawPid = paymentAttemptId ? String(paymentAttemptId).trim() : '';
-          const lockKey = rawPid || `${digitsOnly || data?.identityID}_${data?.PaymentDate}_${data?.Amount}_${data?.OnSpouse ? 'spouse' : 'member'}`;
+          const lockKey = rawPid || `${digitsOnly || data?.identityID}_${data?.PaymentDate}_${data?.Amount}_${data?.onSpouse ? 'spouse' : 'member'}`;
 
           const lockRes = await fetch(`${DB_API_BASE}/index.php?route=payment-lock`, {
             method: 'POST',

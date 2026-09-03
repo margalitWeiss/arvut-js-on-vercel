@@ -102,7 +102,7 @@ export default async function handler(req, res) {
       Amount: String(amount),
       PaymentDate: paymentDate,
       Status: 'שולם',
-      ...(onSpouse ? { OnSpouse: true } : {})
+      ...(onSpouse ? { onSpouse: true } : {})
     };
 
     const sfRes = await fetch(`${SALESFORCE_API_BASE}/addPayment`, {
