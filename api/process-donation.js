@@ -30,7 +30,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { fullName, email, amount, address, phone, returnUrl, cancelUrl, identityID, onSpouse, paymentAttemptId } = req.body;
+    const { fullName, email, amount, address, phone, returnUrl, cancelUrl, identityID, onSpouse, paymentAttemptId, isDonation } = req.body;
+
+    // קבלת תרומה (DocumentType 4 = DonationReceipt, סעיף 46) רק כשהלקוח ביקש זאת במפורש.
+    // בכל מקרה אחר (הצטרפות וכו') נשאר null = ברירת המחדל הקיימת (חשבון קבלה).
+    const documentType = isDonation === true ? 4 : null;
 
     // מזהה ייחודי לניסיון תשלום ספציפי הזה - משמש כמפתח מנעול (lockKey) אצל
     // ה-IPN webhook וקריאת addPayment מהדפדפן, כדי להבטיח שגם תשלומים
@@ -143,7 +147,7 @@ export default async function handler(req, res) {
       }],
       VATIncluded: true,
       VATRate: null,
-      DocumentType: null,
+      DocumentType: documentType,
       RedirectURL: redirectUrl,
       CancelRedirectURL: cancelRedirectUrl,
       ExternalIdentifier: null,
@@ -180,78 +184,102 @@ export default async function handler(req, res) {
     console.log('Request Body (compact):', JSON.stringify(requestBody));
     console.log('CompanyID:', credentials.CompanyID, '(type:', typeof credentials.CompanyID, ')');
     console.log('APIKey exists:', !!credentials.APIKey, '(length:', credentials.APIKey?.length, ')');
-    
-    const response = await fetch(sumitApiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody)
-    });
 
-    console.log('=== SUMIT API Response ===');
-    console.log('Status:', response.status);
-    console.log('Status Text:', response.statusText);
-
-    // בדיקה אם ה-response הצליח
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.log('Error Response:', errorText);
-      
-      let errorMessage = 'שגיאה בעיבוד התשלום';
+    // ניסיון בודד מול סאמיט. מחזיר { success, redirectUrl, transactionId } או { success: false, error }.
+    // beginredirect רק יוצר קישור תשלום (לא מחייב), ולכן בטוח לנסות שוב.
+    const attemptSumit = async () => {
       try {
-        const errorData = JSON.parse(errorText);
-        console.log('Parsed Error Data:', errorData);
-        errorMessage = errorData.Message || errorData.UserErrorMessage || errorData.error || errorMessage;
-      } catch (e) {
-        console.log('Failed to parse error response:', e);
-        errorMessage = `שגיאת API סאמיט (${response.status}): ${errorText || 'לא ניתן להתחבר לסאמיט'}`;
-      }
-      return res.status(500).json({
-        success: false,
-        error: errorMessage
-      });
-    }
-
-    const responseText = await response.text();
-    console.log('Response Text:', responseText);
-    
-    let data;
-    try {
-      data = JSON.parse(responseText);
-      console.log('Parsed Response Data:', JSON.stringify(data, null, 2));
-    } catch (e) {
-      console.error('Failed to parse response:', e);
-      return res.status(500).json({
-        success: false,
-        error: `שגיאה בפענוח תגובת סאמיט: ${responseText}`
-      });
-    }
-
-    // בדיקה אם ה-API הצליח
-    if (data.Status === 'Success (0)' || data.Status === 0) {
-      // data.Data אמור להכיל את ה-URL להעברה
-      const redirectUrl = data.Data?.RedirectURL || data.Data;
-      
-      if (!redirectUrl) {
-        return res.status(500).json({
-          success: false,
-          error: 'לא התקבל URL להעברה מסאמיט'
+        const response = await fetch(sumitApiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
         });
-      }
 
+        console.log('=== SUMIT API Response ===');
+        console.log('DocumentType sent:', requestBody.DocumentType);
+        console.log('Status:', response.status);
+        console.log('Status Text:', response.statusText);
+
+        // בדיקה אם ה-response הצליח
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.log('Error Response:', errorText);
+
+          let errorMessage = 'שגיאה בעיבוד התשלום';
+          try {
+            const errorData = JSON.parse(errorText);
+            console.log('Parsed Error Data:', errorData);
+            errorMessage = errorData.Message || errorData.UserErrorMessage || errorData.error || errorMessage;
+          } catch (e) {
+            console.log('Failed to parse error response:', e);
+            errorMessage = `שגיאת API סאמיט (${response.status}): ${errorText || 'לא ניתן להתחבר לסאמיט'}`;
+          }
+          return { success: false, error: errorMessage };
+        }
+
+        const responseText = await response.text();
+        console.log('Response Text:', responseText);
+
+        let data;
+        try {
+          data = JSON.parse(responseText);
+          console.log('Parsed Response Data:', JSON.stringify(data, null, 2));
+        } catch (e) {
+          console.error('Failed to parse response:', e);
+          return { success: false, error: `שגיאה בפענוח תגובת סאמיט: ${responseText}` };
+        }
+
+        // בדיקה אם ה-API הצליח
+        if (data.Status === 'Success (0)' || data.Status === 0) {
+          // data.Data אמור להכיל את ה-URL להעברה
+          const sumitRedirectUrl = data.Data?.RedirectURL || data.Data;
+
+          if (!sumitRedirectUrl) {
+            return { success: false, error: 'לא התקבל URL להעברה מסאמיט' };
+          }
+
+          return {
+            success: true,
+            redirectUrl: sumitRedirectUrl,
+            transactionId: data.Data?.TransactionId || null
+          };
+        }
+
+        return {
+          success: false,
+          error: data.UserErrorMessage || data.Message || 'שגיאה בעיבוד התשלום'
+        };
+      } catch (error) {
+        console.error('Donation processing error:', error);
+        return { success: false, error: error.message || 'שגיאה בעיבוד התרומה' };
+      }
+    };
+
+    let result = await attemptSumit();
+
+    // רשת ביטחון: אם סאמיט דחתה את הבקשה עם DocumentType 4 - מנסים שוב עם null
+    // (התנהגות זהה להיום), כדי שתרומה לא תיכשל בגלל סוג המסמך.
+    if (!result.success && requestBody.DocumentType !== null) {
+      console.warn('SUMIT rejected DocumentType', requestBody.DocumentType, '- retrying with null. Reason:', result.error);
+      requestBody.DocumentType = null;
+      result = await attemptSumit();
+    }
+
+    if (result.success) {
       return res.status(200).json({
         success: true,
-        redirectUrl: redirectUrl,
-        transactionId: data.Data?.TransactionId || null,
+        redirectUrl: result.redirectUrl,
+        transactionId: result.transactionId,
         paymentAttemptId: effectivePaymentAttemptId
       });
-    } else {
-      return res.status(500).json({
-        success: false,
-        error: data.UserErrorMessage || data.Message || 'שגיאה בעיבוד התשלום'
-      });
     }
+
+    return res.status(500).json({
+      success: false,
+      error: result.error
+    });
   } catch (error) {
     console.error('Donation processing error:', error);
     return res.status(500).json({
